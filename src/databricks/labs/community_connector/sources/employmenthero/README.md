@@ -87,11 +87,11 @@ All supported tables use **snapshot** ingestion and are keyed by `id`:
 | `custom_fields`     | Custom field definitions for the organisation                              | `snapshot`     | `id`        | `organisation_id` |
 | `employing_entities`| Employing entities in the organisation                                     | `snapshot`     | `id`        | `organisation_id` |
 | `leave_categories`  | Leave categories (e.g. Annual Leave, Sick Leave)                            | `snapshot`     | `id`        | `organisation_id` |
-| `leave_requests`    | Leave requests for the organisation (supports optional `start_date`)       | `snapshot`     | `id`        | `organisation_id` |
+| `leave_requests`    | Leave requests for the organisation (supports optional `start_date`)       | `snapshot`     | `id`        | `organisation_id`, `start_date` |
 | `policies`          | Policies (e.g. induction policies)                                          | `snapshot`     | `id`        | `organisation_id` |
 | `roles`             | Roles/tags (standalone HR or payroll-connected)                             | `snapshot`     | `id`        | `organisation_id` |
 | `teams`             | Teams (shown as Groups in the Employment Hero UI)                           | `snapshot`     | `id`        | `organisation_id` |
-| `timesheet_entries` | Timesheet entries across all employees (supports optional `start_date`)    | `snapshot`     | `id`        | `organisation_id` |
+| `timesheet_entries` | Timesheet entries across all employees (supports optional `start_date`)    | `snapshot`     | `id`        | `organisation_id`, `start_date` |
 | `work_locations`    | Work locations (e.g. offices)                                               | `snapshot`     | `id`        | `organisation_id` |
 | `work_sites`        | Work sites with address, departments, and HR positions                      | `snapshot`     | `id`        | `organisation_id` |
 
@@ -108,7 +108,7 @@ No other table-specific options are required for basic use. Omitted optional API
 The following tables support an optional **`start_date`** table option. When provided, the connector passes it to the API as a date filter so only records on or after that date are returned:
 
 - **`leave_requests`**: `start_date` (string, `YYYY-MM-DD`) — filter leave requests by start date. See [Get Leave Requests](https://developer.employmenthero.com/api-references#get-leave-requests).
-- **`timesheet_entries`**: `start_date` (string, `dd/mm/yyyy` per API) — start of the date range for timesheet entries. The API also supports `end_date`; the connector currently forwards `start_date` when present. See [Get Timesheet Entries](https://developer.employmenthero.com/api-references#get-timesheet-entries).
+- **`timesheet_entries`**: `start_date` (string, `dd/mm/yyyy` per API) — start of the date range for timesheet entries. The connector currently forwards `start_date` when present. See [Get Timesheet Entries](https://developer.employmenthero.com/api-references#get-timesheet-entries).
 
 Include `start_date` in `externalOptionsAllowList` (e.g. `organisation_id,start_date`) if you use it. Example table config:
 
@@ -116,8 +116,10 @@ Include `start_date` in `externalOptionsAllowList` (e.g. `organisation_id,start_
 {
   "table": {
     "source_table": "leave_requests",
-    "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86",
-    "start_date": "2025-01-01"
+    "table_configuration": {
+      "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86",
+      "start_date": "2025-01-01"
+    }
   }
 }
 ```
@@ -159,7 +161,7 @@ The connector preserves nested structures and uses nullable types where the API 
 
 ### Step 1: Clone/Copy the Source Connector Code
 
-Use the Lakeflow Community Connector UI to copy or reference the Employment Hero connector source in your workspace. This typically places the connector code (`employmenthero.py`, `employmenthero_schemas.py`, `employmenthero_client.py`, and related files) under a project path that Lakeflow can load.
+Use the Lakeflow Community Connector UI to copy or reference the Employment Hero connector source in your workspace. This typically places the connector code (e.g., `employmenthero.py`) under a project path that Lakeflow can load.
 
 ### Step 2: Configure Your Pipeline
 
@@ -183,19 +185,25 @@ Example pipeline spec snippet: ingest the top-level **organisations** table (no 
       {
         "table": {
           "source_table": "employees",
-          "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86"
+          "table_configuration": {
+            "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86"
+          }
         }
       },
       {
         "table": {
           "source_table": "teams",
-          "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86"
+          "table_configuration": {
+            "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86"
+          }
         }
       },
       {
         "table": {
           "source_table": "cost_centres",
-          "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86"
+          "table_configuration": {
+            "organisation_id": "bdfcb02b-fcc3-4f09-8636-c06c14345b86"
+          }
         }
       }
     ]
@@ -223,20 +231,20 @@ Run the pipeline using your usual Lakeflow or Databricks orchestration (e.g. sch
 #### Troubleshooting
 
 - **Authentication failures (401 / 403)**  
-  - Check that `client_id`, `client_secret`, `redirect_uri`, and `authorization_code` are correct and that the authorization code has not already been used (use the resulting refresh token for subsequent runs if supported).  
+  - Check that `client_id`, `client_secret`, `redirect_uri`, and `authorization_code` are correct and that the authorization code has not already been used (use the resulting refresh token for subsequent runs if supported).
   - Ensure the OAuth application scopes include access to the endpoints you need (e.g. employees, organisations).
 
 - **Missing or invalid `organisation_id`**  
   - The connector raises an error if `organisation_id` is missing for an organisation-scoped table. Add `organisation_id` to the table options and ensure it is in `externalOptionsAllowList`. The **`organisations`** table does not require `organisation_id`.
 
-- **404 or empty data**  
-  - Confirm the organisation ID exists and that the authenticated user has access to that organisation.  
+- **404 or empty data**
+  - Confirm the organisation ID exists and that the authenticated user has access to that organisation. 
   - For SSO organisations, note that only one SSO organisation may be authorised per token; use separate connections/tokens if you need multiple SSO orgs.
 
-- **Rate limiting (429)**  
+- **Rate limiting (429)**
   - Reduce concurrency or schedule syncs less frequently. Stay within the published limits (e.g. 20 req/s, 100 req/min) per [Employment Hero API documentation](https://developer.employmenthero.com/api-references).
 
-- **Schema or type mismatches downstream**  
+- **Schema or type mismatches downstream**
   - The connector uses nested structs and arrays; ensure downstream tables or views accept these types or add transforms to flatten/cast as needed.
 
 ## References
